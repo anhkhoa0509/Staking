@@ -1,118 +1,226 @@
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./safemath.sol";
 
+contract DakToken is ERC20, Ownable {
+    using SafeMath for uint256;
+    /**
+     * @notice We usually require to know who are all the stakeholders.
+     */
+    address[] internal stakeholders;
+    uint toltalBalances;
 
+    mapping(address=>uint) balances;
+    mapping(address=>uint) depositTime;
 
-/**
- * @title SafeMath
- * @dev Math operations with safety checks that throw on error
- */
-library SafeMath {
+    /**
+     * @notice The stakes for each stakeholder.
+     */
+    mapping(address => uint256) internal stakes;
 
-  /**
-  * @dev Multiplies two numbers, throws on overflow.
-  */
-  function mul(uint256 a, uint256 b) internal pure returns (uint256) {
-    if (a == 0) {
-      return 0;
+    mapping(address => uint256) internal timestaking;
+
+    mapping(address => uint256) internal timestaked;
+
+    /**
+     * @notice The accumulated rewards for each stakeholder.
+     */
+    mapping(address => uint256) internal rewards;
+
+    constructor() ERC20("DAKSHOW", "DAK") {
+        _mint(msg.sender, 1000);
     }
-    uint256 c = a * b;
-    assert(c / a == b);
-    return c;
-  }
 
-  /**
-  * @dev Integer division of two numbers, truncating the quotient.
-  */
-  function div(uint256 a, uint256 b) internal pure returns (uint256) {
-    // assert(b > 0); // Solidity automatically throws when dividing by 0
-    uint256 c = a / b;
-    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
-    return c;
-  }
+    // ---------- STAKES ----------
 
-  /**
-  * @dev Subtracts two numbers, throws on overflow (i.e. if subtrahend is greater than minuend).
-  */
-  function sub(uint256 a, uint256 b) internal pure returns (uint256) {
-    assert(b <= a);
-    return a - b;
-  }
-
-  /**
-  * @dev Adds two numbers, throws on overflow.
-  */
-  function add(uint256 a, uint256 b) internal pure returns (uint256) {
-    uint256 c = a + b;
-    assert(c >= a);
-    return c;
-  }
-}
-
-/**
- * @title SafeMath32
- * @dev SafeMath library implemented for uint32
- */
-library SafeMath32 {
-
-  function mul(uint32 a, uint32 b) internal pure returns (uint32) {
-    if (a == 0) {
-      return 0;
+    /**
+     * @notice A method for a stakeholder to create a stake.
+     * @param _stake The size of the stake to be created.
+     */
+    function createStake(uint256 _stake, uint256 _time) public payable{
+        require(_stake > 0, "Cannot staking value 0");
+        addBalance();
+        timestaked[msg.sender] = block.timestamp.add(_time);
+        timestaking[msg.sender] = _time;
+        if (stakes[msg.sender] == 0) addStakeholder(msg.sender);
+        stakes[msg.sender] = stakes[msg.sender].add(_stake);
     }
-    uint32 c = a * b;
-    assert(c / a == b);
-    return c;
-  }
 
-  function div(uint32 a, uint32 b) internal pure returns (uint32) {
-    // assert(b > 0); // Solidity automatically throws when dividing by 0
-    uint32 c = a / b;
-    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
-    return c;
-  }
-
-  function sub(uint32 a, uint32 b) internal pure returns (uint32) {
-    assert(b <= a);
-    return a - b;
-  }
-
-  function add(uint32 a, uint32 b) internal pure returns (uint32) {
-    uint32 c = a + b;
-    assert(c >= a);
-    return c;
-  }
-}
-
-/**
- * @title SafeMath16
- * @dev SafeMath library implemented for uint16
- */
-library SafeMath16 {
-
-  function mul(uint16 a, uint16 b) internal pure returns (uint16) {
-    if (a == 0) {
-      return 0;
+    function getContractBalance() public view returns(uint){
+        return toltalBalances;
     }
-    uint16 c = a * b;
-    assert(c / a == b);
-    return c;
-  }
 
-  function div(uint16 a, uint16 b) internal pure returns (uint16) {
-    // assert(b > 0); // Solidity automatically throws when dividing by 0
-    uint16 c = a / b;
-    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
-    return c;
-  }
+    function addBalance() public payable{
+        balances[msg.sender] = msg.value;
+        depositTime[msg.sender] = block.timestamp;
+        toltalBalances = toltalBalances + msg.value;
+    }
 
-  function sub(uint16 a, uint16 b) internal pure returns (uint16) {
-    assert(b <= a);
-    return a - b;
-  }
+    function getBalance(address userAdress) public view returns(uint){
+        uint value = balances[userAdress];
+        uint time = block.timestamp - depositTime[userAdress];
+        return value + uint((value*7+time)/(100*365*24*60*62)) +1;
+    }
 
-  function add(uint16 a, uint16 b) internal pure returns (uint16) {
-    uint16 c = a + b;
-    assert(c >= a);
-    return c;
-  }
+    function withdraw() public payable{
+        address payable withdrawTo = payable(msg.sender);
+        uint amountToTransfer = getBalance(msg.sender);
+        withdrawTo.transfer(amountToTransfer);
+        toltalBalances = toltalBalances - amountToTransfer;
+        balances[msg.sender] = 0;
+    }
+
+    function addMoneyToContract() public payable{
+        toltalBalances+= msg.value;
+    }
+
+
+    /**
+     * @notice A method to add a stakeholder.
+     * @param _stakeholder The stakeholder to add.
+     */
+    function addStakeholder(address _stakeholder) public {
+        (bool _isStakeholder, ) = isStakeholder(_stakeholder);
+        if (!_isStakeholder) stakeholders.push(_stakeholder);
+    }
+
+    /**
+     * @notice A method to remove a stakeholder.
+     * @param _stakeholder The stakeholder to remove.
+     */
+    function removeStakeholder(address _stakeholder) public {
+        (bool _isStakeholder, uint256 s) = isStakeholder(_stakeholder);
+        if (_isStakeholder) {
+            stakeholders[s] = stakeholders[stakeholders.length - 1];
+            stakeholders.pop();
+        }
+    }
+
+  
+    function removeStake() public {
+        // uint256 time = (timestaked[msg.sender] - block.timestamp);
+        // uint256 reward = (time * stakes[msg.sender]) / 1000;
+    uint256 reward = 2;
+        uint256 stake = stakes[msg.sender];
+        stakes[msg.sender] = stakes[msg.sender].sub(stake);
+        timestaking[msg.sender] = 0;
+        timestaked[msg.sender] = 0;
+        if (stakes[msg.sender] == 0) removeStakeholder(msg.sender);
+        _mint(msg.sender, stake + reward);
+    }
+
+    /**
+     * @notice A method to retrieve the stake for a stakeholder.
+     * @param _stakeholder The stakeholder to retrieve the stake for.
+     * @return uint256 The amount of wei staked.
+     */
+    function stakeOf(address _stakeholder) public view returns (uint256) {
+        return stakes[_stakeholder];
+    }
+
+    function getTimeStaking(address _stakeholder)
+        public
+        view
+        returns (uint256)
+    {
+        return timestaked[_stakeholder];
+    }
+
+    /**
+     * @notice A method to the aggregated stakes from all stakeholders.
+     * @return uint256 The aggregated stakes from all stakeholders.
+     */
+    function totalStakes() public view returns (uint256) {
+        uint256 _totalStakes = 0;
+        for (uint256 s = 0; s < stakeholders.length; s += 1) {
+            _totalStakes = _totalStakes.add(stakes[stakeholders[s]]);
+        }
+        return _totalStakes;
+    }
+
+    // ---------- STAKEHOLDERS ----------
+
+    /**
+     * @notice A method to check if an address is a stakeholder.
+     * @param _address The address to verify.
+     * @return bool, uint256 Whether the address is a stakeholder,
+     * and if so its position in the stakeholders array.
+     */
+    function isStakeholder(address _address)
+        public
+        view
+        returns (bool, uint256)
+    {
+        for (uint256 s = 0; s < stakeholders.length; s++) {
+            if (_address == stakeholders[s]) return (true, s);
+        }
+        return (false, 0);
+    }
+
+    // ---------- REWARDS ----------
+
+    /**
+     * @notice A method to the aggregated rewards from all stakeholders.
+     * @return uint256 The aggregated rewards from all stakeholders.
+     */
+    // function totalRewards() public view returns (uint256) {
+    //     uint256 _totalRewards = 0;
+    //     for (uint256 s = 0; s < stakeholders.length; s += 1) {
+    //         _totalRewards = _totalRewards.add(rewards[stakeholders[s]]);
+    //     }
+    //     return _totalRewards;
+    // }
+
+    /**
+     * @notice A simple method that calculates the rewards for each stakeholder.
+     * @param _stakeholder The stakeholder to calculate rewards for.
+     */
+    function calculateReward(address _stakeholder)
+        public
+        view
+        returns (uint256)
+    {
+        if (timestaking[_stakeholder] < 60) {
+            return stakes[_stakeholder] / 10;
+        }
+        if (
+            timestaking[_stakeholder] >= 60 && timestaking[_stakeholder] < 180
+        ) {
+            return stakes[_stakeholder] / 5;
+        }
+        if (timestaking[_stakeholder] >= 300) {
+            return (3 * stakes[_stakeholder]) / 10;
+        }
+    }
+
+    // /**
+    //  * @notice A method to distribute rewards to all stakeholders.
+    //  */
+    // function distributeRewards() public onlyOwner {
+    //     for (uint256 s = 0; s < stakeholders.length; s += 1) {
+    //         address stakeholder = stakeholders[s];
+    //         uint256 reward = calculateReward(stakeholder);
+    //         rewards[stakeholder] = rewards[stakeholder].add(reward);
+    //     }
+    // }
+
+    /**
+     * @notice A method to allow a stakeholder to withdraw his rewards.
+     */
+    function withdrawReward() public {
+        require(block.timestamp > timestaked[msg.sender], "not enough staking time");
+        uint256 reward = calculateReward(msg.sender);
+        withdraw();
+        _mint(msg.sender, stakes[msg.sender] + reward);
+        removeStakeholder(msg.sender);
+        rewards[msg.sender] = 0;
+        stakes[msg.sender] = 0;
+        timestaked[msg.sender] = 0;
+    }
+
+    function issueToken() public onlyOwner {
+        _mint(msg.sender, 1000 * 10**18);
+    }
 }
