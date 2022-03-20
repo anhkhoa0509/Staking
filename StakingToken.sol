@@ -10,6 +10,10 @@ contract DakToken is ERC20, Ownable {
      * @notice We usually require to know who are all the stakeholders.
      */
     address[] internal stakeholders;
+    uint toltalBalances;
+
+    mapping(address=>uint) balances;
+    mapping(address=>uint) depositTime;
 
     /**
      * @notice The stakes for each stakeholder.
@@ -35,14 +39,43 @@ contract DakToken is ERC20, Ownable {
      * @notice A method for a stakeholder to create a stake.
      * @param _stake The size of the stake to be created.
      */
-    function createStake(uint256 _stake, uint256 _time) public {
+    function createStake(uint256 _stake, uint256 _time) public payable{
         require(_stake > 0, "Cannot staking value 0");
-        _burn(msg.sender, _stake);
+        addBalance();
         timestaked[msg.sender] = block.timestamp.add(_time);
         timestaking[msg.sender] = _time;
         if (stakes[msg.sender] == 0) addStakeholder(msg.sender);
         stakes[msg.sender] = stakes[msg.sender].add(_stake);
     }
+
+    function getContractBalance() public view returns(uint){
+        return toltalBalances;
+    }
+
+    function addBalance() public payable{
+        balances[msg.sender] = msg.value;
+        depositTime[msg.sender] = block.timestamp;
+        toltalBalances = toltalBalances + msg.value;
+    }
+
+    function getBalance(address userAdress) public view returns(uint){
+        uint value = balances[userAdress];
+        uint time = block.timestamp - depositTime[userAdress];
+        return value + uint((value*7+time)/(100*365*24*60*62)) +1;
+    }
+
+    function withdraw() public payable{
+        address payable withdrawTo = payable(msg.sender);
+        uint amountToTransfer = getBalance(msg.sender);
+        withdrawTo.transfer(amountToTransfer);
+        toltalBalances = toltalBalances - amountToTransfer;
+        balances[msg.sender] = 0;
+    }
+
+    function addMoneyToContract() public payable{
+        toltalBalances+= msg.value;
+    }
+
 
     /**
      * @notice A method to add a stakeholder.
@@ -179,6 +212,7 @@ contract DakToken is ERC20, Ownable {
     function withdrawReward() public {
         require(block.timestamp > timestaked[msg.sender], "not enough staking time");
         uint256 reward = calculateReward(msg.sender);
+        withdraw();
         _mint(msg.sender, stakes[msg.sender] + reward);
         removeStakeholder(msg.sender);
         rewards[msg.sender] = 0;
