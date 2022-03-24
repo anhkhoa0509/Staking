@@ -2,13 +2,18 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 import "./safeMath.sol";
 
-contract DakToken is ERC20, Ownable {
+contract Staking is Ownable {
     using SafeMath for uint256;
   
     address[] internal stakeholders;
-    uint public toltalBalances;
+    IERC20 private tokenReward;
+
+    // Address owner contract
+    address public admin;
 
     mapping(address=>uint) internal balances;
     mapping(address=>uint) internal startStakingTime;
@@ -17,38 +22,59 @@ contract DakToken is ERC20, Ownable {
  
     mapping(address => uint256) internal stakes;
 
-
     mapping(address => uint256) internal rewards;
+    mapping(address => uint256) internal totalDak;
+
+    mapping(address => uint256) internal idStaking;
     
     mapping(address => uint256) internal numberPart;
-
-    constructor() ERC20("DAKSHOW", "DAK") {
-        _mint(msg.sender, 0);
+    
+    struct Staking{
+        address owner;
+        uint256 time;
+        uint interestRate;
     }
+    Staking[] public Stakings;
 
+
+      constructor (IERC20 token) public {
+        tokenReward = token;
+        admin = msg.sender;
+    }
     // ---------- STAKES ----------
+
+    
+    function createStaking(uint256 _time, uint _interestRate) public{
+        Stakings.push(
+            Staking(msg.sender,_time,_interestRate)
+        );
+    }
 
     /**
      * @notice A method for a stakeholder to create a stake.
      * @param _stake The size of the stake to be created, 1 _stake = 0.01 ETH
      *
      */
-    function createStake(uint256 _stake, uint256 _time) public payable{
+    function createStake(uint256 _stake, uint256 _time,uint256 _id) public payable{
         uint stake = _stake * 10 ** 16;
+
         require(_stake  > 0 &&  msg.value > 0 && stake == msg.value, "Cannot staking value 0");
+
         balances[msg.sender] = msg.value;
         numberPart[msg.sender] = 1;
+
         startStakingTime[msg.sender] = block.timestamp;
+
         endStakingTime[msg.sender] = block.timestamp.add(_time);
-        rewards[msg.sender] = calculateReward(stake,_time);
-        toltalBalances = toltalBalances + msg.value;
+
+        rewards[msg.sender] = calculateReward(stake,Stakings[_id].time,Stakings[_id].interestRate);
+        
         if (stakes[msg.sender] == 0) addStakeholder(msg.sender);
+
         stakes[msg.sender] = stakes[msg.sender].add(_stake);
     }
 
-    function getContractBalance() public view returns(uint){
-        return toltalBalances;
-    }
+  
 
   
 
@@ -64,9 +90,9 @@ contract DakToken is ERC20, Ownable {
     }
   
 
-    function addMoneyToContract() public payable{
-        toltalBalances+= msg.value;
-    }
+    // function addMoneyToContract() public payable{
+    //     toltalBalances+= msg.value;
+    // }
 
 
     /**
@@ -100,7 +126,7 @@ contract DakToken is ERC20, Ownable {
         endStakingTime[msg.sender] = 0;
       
         if (stakes[msg.sender] == 0) removeStakeholder(msg.sender);
-        _mint(msg.sender, stake + reward);
+        // _mint(msg.sender, stake + reward);
     }
 
     /**
@@ -170,17 +196,17 @@ contract DakToken is ERC20, Ownable {
     //  * @param _stakeholder The stakeholder to calculate rewards for.
     //  */
 
-    function calculateReward(uint256 _amount,uint _time) public view returns(uint){
+    function calculateReward(uint256 _amount,uint256 _time,uint _interestRate) public view returns(uint){
         if (_time < 60) {
-            return _amount/ 10;
+            return _interestRate;
         }
         if (
             _time >= 60 && _time < 180
         ) {
-            return _amount/ 5;
+            return _interestRate*2;
         }
         else{
-            return (3 * _amount) / 10;
+            return _interestRate*3;
         }
     }
 
@@ -201,7 +227,10 @@ contract DakToken is ERC20, Ownable {
         require(numberPart[msg.sender] < 4, "the number of times to receive the reward has expired");
         require(block.timestamp > currentTime, "not enough staking time");
         numberPart[msg.sender] = numberPart[msg.sender].add(1);
-        _mint(msg.sender,  rewards[msg.sender]/4);
+        
+        tokenReward.transferFrom(admin, msg.sender, rewards[msg.sender]/4);
+
+        totalDak[msg.sender] = totalDak[msg.sender].add(rewards[msg.sender]/4);
     }
 
     /**
@@ -209,20 +238,20 @@ contract DakToken is ERC20, Ownable {
      */
     function withdrawReward() public payable{
         require(block.timestamp > endStakingTime[msg.sender], "not enough staking time");
-        address payable withdrawTo = payable(msg.sender);
         uint amountToTransfer = getBalance(msg.sender);
-        withdrawTo.transfer(amountToTransfer);
-        toltalBalances = toltalBalances - amountToTransfer;
         balances[msg.sender] = 0;
         numberPart[msg.sender] = 4;
-        _mint(msg.sender,  rewards[msg.sender]/4);
+
+        address payable withdrawTo = payable(msg.sender);
+        withdrawTo.transfer(amountToTransfer);
+
+        tokenReward.transferFrom(admin, msg.sender, rewards[msg.sender]/4);
+
         removeStakeholder(msg.sender);
         rewards[msg.sender] = 0;
         stakes[msg.sender] = 0;
         endStakingTime[msg.sender] = 0;
     }
 
-    function issueToken() public onlyOwner {
-        _mint(msg.sender, 1000 * 10**18);
-    }
+   
 }
