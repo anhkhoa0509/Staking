@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import "./safeMath.sol";
+import "./SafeMath.sol";
 
 contract Staking is Ownable {
     using SafeMath for uint256;
