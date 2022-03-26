@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import "./SafeMath.sol";
+import "./safeMath.sol";
 
 contract Staking is Ownable {
     using SafeMath for uint256;
@@ -36,6 +36,7 @@ contract Staking is Ownable {
         uint256 totalStakes;
         uint interestRate;
         string typeCoin;
+        uint256 id;
     }
     Staking[] public Stakings;
 
@@ -48,10 +49,20 @@ contract Staking is Ownable {
     // ---------- STAKES ----------
 
     
-    function createStaking(uint256 _time, uint _interestRate) public{
+    function createStaking(uint256 _time, uint _interestRate,string memory _typeCoin) public{
         Stakings.push(
-            Staking(msg.sender,_time,0,_interestRate,"ETH")
+            Staking(msg.sender,_time,0,_interestRate,_typeCoin,Stakings.length)
         );
+    }
+
+    function getAStaking() public view returns (Staking[] memory){
+        Staking[] memory result = new Staking[](Stakings.length);
+        uint256 counter = 0;
+        for (uint256 i = 0; i < Stakings.length ; i++) {
+                result[counter] = Stakings[i];
+                counter++;
+            }
+        return result;
     }
 
     /**
@@ -183,7 +194,6 @@ contract Staking is Ownable {
 
         tokenReward.transferFrom(admin, msg.sender, rewards[_id][msg.sender]/3 * 10**18);
 
-       
         rewards[_id][msg.sender] = 0;
         stakes[_id][msg.sender] = 0;
         endStakingTime[_id][msg.sender] = 0;
