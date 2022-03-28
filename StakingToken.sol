@@ -15,7 +15,6 @@ contract Staking is Ownable {
 
     // Address owner contract
     address public admin;
-    mapping(uint256 => mapping(address => uint256)) balances;
     // Time staking
     mapping(uint256=>mapping(address=>uint256)) internal startStakingTime;
     mapping(uint256=>mapping(address=>uint256)) internal endStakingTime;
@@ -75,7 +74,8 @@ contract Staking is Ownable {
 
         require(_stake  > 0 &&  msg.value > 0 && stake == msg.value, "Cannot staking value 0");
 
-        numberPart[_id][msg.sender] = 1;
+        numberPart[_id][msg.sender] = 0;
+
 
         startStakingTime[_id][msg.sender] = block.timestamp;
 
@@ -85,10 +85,23 @@ contract Staking is Ownable {
 
         Stakings[_id].totalStakes =  Stakings[_id].totalStakes.add(msg.value);
         
-        stakes[_id][msg.sender] = stakes[_id][msg.sender].add(_stake);
+        stakes[_id][msg.sender] = stakes[_id][msg.sender].add(msg.value);
     }
 
-  
+  function getTimeSuccessReward(address _userAdress,uint256 _id) public view returns (uint256[] memory){
+        uint256[] memory result = new uint256[](3);
+        uint256 start =  startStakingTime[_id][_userAdress];
+        uint256 end =  endStakingTime[_id][_userAdress];
+        uint256 counter = 0;
+        uint256 temp = (end-start)/3;
+        for (uint256 i = 0; i < 3 ; i++) {
+                start = start.add(temp);
+                result[i] = start;
+            }
+        return result;
+    }
+
+
      function getBalanceStaking(uint256 _id) public view returns(uint){
         return Stakings[_id].totalStakes;
     }
@@ -96,12 +109,12 @@ contract Staking is Ownable {
   
 
     function getBalanceUserStake(address _userAdress,uint256 _id) public view returns(uint){
-        return  balances[_id][_userAdress];
+        return  stakes[_id][_userAdress];
     }
 
 
     function getUserReward(address _userAdress,uint256 _id) public view returns(uint){
-        return stakes[_id][msg.sender] ;
+        return rewards[_id][_userAdress] ;
     }
   
 
@@ -137,17 +150,7 @@ contract Staking is Ownable {
     //  */
 
     function calculateReward(uint256 _amount,uint256 _time,uint _interestRate) public view returns(uint){
-        if (_amount < 10) {
             return _interestRate * 10**18;
-        }
-        if (
-            _amount >= 10 && _amount < 50
-        ) {
-            return _interestRate*2* 10**18;
-        }
-        else{
-            return _interestRate*3* 10**18;
-        }
     }
 
     // /**
@@ -160,6 +163,11 @@ contract Staking is Ownable {
     //         rewards[stakeholder] = rewards[stakeholder].add(reward);
     //     }
     // }
+
+
+    function getIndexReward(address _userAdress,uint256 _id) public view returns(uint256){
+        return numberPart[_id][_userAdress];
+    }
 
     function withdrawRawardPart(uint256 _id) public {
         require(endStakingTime[_id][msg.sender] > 0, "not staking yet");
@@ -183,17 +191,17 @@ contract Staking is Ownable {
      * @notice A method to allow a stakeholder to withdraw his rewards.
      */
     function withdrawReward(uint256 _id) public payable{
-        require(endStakingTime[_id][msg.sender] > 0, "not staking yet");
-        require(block.timestamp > endStakingTime[_id][msg.sender], "not enough staking time");
+        // require(endStakingTime[_id][msg.sender] > 0, "not staking yet");
+        // require(block.timestamp > endStakingTime[_id][msg.sender], "not enough staking time");
         uint amountToTransfer = getBalanceUserStake(msg.sender,_id);
-        balances[_id][msg.sender] = 0;
-        numberPart[_id][msg.sender] = 3;
 
         address payable withdrawTo = payable(msg.sender);
         withdrawTo.transfer(amountToTransfer);
 
-        tokenReward.transferFrom(admin, msg.sender, rewards[_id][msg.sender]/3 * 10**18);
-
+        Stakings[_id].totalStakes = Stakings[_id].totalStakes.sub(amountToTransfer);
+        tokenReward.transferFrom(admin, msg.sender, rewards[_id][msg.sender]/3);
+        
+        numberPart[_id][msg.sender] = 3;
         rewards[_id][msg.sender] = 0;
         stakes[_id][msg.sender] = 0;
         endStakingTime[_id][msg.sender] = 0;
