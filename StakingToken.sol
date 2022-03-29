@@ -1,4 +1,3 @@
-
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -15,6 +14,8 @@ contract Staking is Ownable {
 
     // Address owner contract
     address public admin;
+    uint256 public totalDakInContract;
+
     // Time staking
     mapping(uint256=>mapping(address=>uint256)) internal startStakingTime;
     mapping(uint256=>mapping(address=>uint256)) internal endStakingTime;
@@ -22,8 +23,12 @@ contract Staking is Ownable {
 
  
     mapping(uint256=> mapping(address => uint256)) internal stakes;
+    
+    mapping(uint256=> mapping(address => bool)) internal isStake;
 
     mapping(uint256=> mapping(address => uint256)) internal rewards;
+    mapping(uint256=> mapping(address => uint256)) internal totalReward;
+
     mapping(address=>uint256) internal totalDak;
 
     
@@ -36,7 +41,10 @@ contract Staking is Ownable {
         uint interestRate;
         string typeCoin;
         uint256 id;
+        uint8 unlocks;
     }
+
+
     Staking[] public Stakings;
 
 
@@ -48,13 +56,13 @@ contract Staking is Ownable {
     // ---------- STAKES ----------
 
     
-    function createStaking(uint256 _time, uint _interestRate,string memory _typeCoin) public{
+    function createStaking(uint256 _time, uint _interestRate,string memory _typeCoin,uint8 _unlocks) public{
         Stakings.push(
-            Staking(msg.sender,_time,0,_interestRate,_typeCoin,Stakings.length)
+            Staking(msg.sender,_time,0,_interestRate,_typeCoin,Stakings.length,_unlocks)
         );
     }
 
-    function getAStaking() public view returns (Staking[] memory){
+    function getStaking() public view returns (Staking[] memory){
         Staking[] memory result = new Staking[](Stakings.length);
         uint256 counter = 0;
         for (uint256 i = 0; i < Stakings.length ; i++) {
@@ -74,27 +82,41 @@ contract Staking is Ownable {
 
         require(_stake  > 0 &&  msg.value > 0 && stake == msg.value, "Cannot staking value 0");
 
-        numberPart[_id][msg.sender] = 0;
-
+        isStake[_id][msg.sender] = true;
+        
+        numberPart[_id][msg.sender] = Stakings[_id].unlocks - 1;
+        totalReward[_id][msg.sender] = Stakings[_id].unlocks;
 
         startStakingTime[_id][msg.sender] = block.timestamp;
 
         endStakingTime[_id][msg.sender] = block.timestamp.add(Stakings[_id].time);
+        stakes[_id][msg.sender] = msg.value;
 
-        rewards[_id][msg.sender] = calculateReward(stake,Stakings[_id].time,Stakings[_id].interestRate);
+        rewards[_id][msg.sender] = Stakings[_id].interestRate * stakes[_id][msg.sender] ;
 
         Stakings[_id].totalStakes =  Stakings[_id].totalStakes.add(msg.value);
-        
-        stakes[_id][msg.sender] = stakes[_id][msg.sender].add(msg.value);
+    
     }
 
+    function addStake(uint256 _stake,uint256 _id) public payable{
+        require(isStake[_id][msg.sender] , "User not staking");
+        stakes[_id][msg.sender] = stakes[_id][msg.sender].add(msg.value);
+        rewards[_id][msg.sender] = Stakings[_id].interestRate* stakes[_id][msg.sender] ;
+        endStakingTime[_id][msg.sender] = endStakingTime[_id][msg.sender].add(Stakings[_id].time);
+        numberPart[_id][msg.sender] = numberPart[_id][msg.sender].add(Stakings[_id].unlocks - 1);
+        totalReward[_id][msg.sender] = totalReward[_id][msg.sender].add(Stakings[_id].unlocks);
+
+    }
+
+
+
   function getTimeSuccessReward(address _userAdress,uint256 _id) public view returns (uint256[] memory){
-        uint256[] memory result = new uint256[](3);
+        uint256[] memory result = new uint256[](Stakings[_id].unlocks);
         uint256 start =  startStakingTime[_id][_userAdress];
         uint256 end =  endStakingTime[_id][_userAdress];
         uint256 counter = 0;
-        uint256 temp = (end-start)/3;
-        for (uint256 i = 0; i < 3 ; i++) {
+        uint256 temp = (end-start)/Stakings[_id].unlocks;
+        for (uint256 i = 0; i < Stakings[_id].unlocks ; i++) {
                 start = start.add(temp);
                 result[i] = start;
             }
@@ -118,7 +140,6 @@ contract Staking is Ownable {
     }
   
 
-
     
     function getTimeStaking(address _stakeholder,uint256 _id)
         public
@@ -132,76 +153,70 @@ contract Staking is Ownable {
   
     // ---------- REWARDS ----------
 
-    /**
-     * @notice A method to the aggregated rewards from all stakeholders.
-     * @return uint256 The aggregated rewards from all stakeholders.
-     */
-    // function totalRewards() public view returns (uint256) {
-    //     uint256 _totalRewards = 0;
-    //     for (uint256 s = 0; s < stakeholders.length; s += 1) {
-    //         _totalRewards = _totalRewards.add(rewards[stakeholders[s]]);
-    //     }
-    //     return _totalRewards;
-    // }
 
-    // /**
-    //  * @notice A simple method that calculates the rewards for each stakeholder.
-    //  * @param _stakeholder The stakeholder to calculate rewards for.
-    //  */
-
-    function calculateReward(uint256 _amount,uint256 _time,uint _interestRate) public view returns(uint){
-            return _interestRate * 10**18;
-    }
-
-    // /**
-    //  * @notice A method to distribute rewards to all stakeholders.
-    //  */
-    // function distributeRewards() public onlyOwner {
-    //     for (uint256 s = 0; s < stakeholders.length; s += 1) {
-    //         address stakeholder = stakeholders[s];
-    //         uint256 reward = calculateReward(stakeholder);
-    //         rewards[stakeholder] = rewards[stakeholder].add(reward);
-    //     }
-    // }
 
 
     function getIndexReward(address _userAdress,uint256 _id) public view returns(uint256){
         return numberPart[_id][_userAdress];
     }
 
+    function getCurrentTimeReward(address _userAdress,uint256 _id) public view returns(uint256){
+        uint256 result ;
+        uint256 start =  startStakingTime[_id][_userAdress];
+        uint256 end =  endStakingTime[_id][_userAdress];
+        uint256 counter = 0;
+        uint256 temp = (end-start)/Stakings[_id].unlocks;
+        uint256 index =totalReward[_id][_userAdress] - getIndexReward(msg.sender,_id);
+        for (uint256 i = 0; i <= index ; i++) {
+                start = start.add(temp);
+                result = start;
+            }
+        return result;
+
+    }
+
     function withdrawRawardPart(uint256 _id) public {
         require(endStakingTime[_id][msg.sender] > 0, "not staking yet");
 
-        uint256 time = numberPart[_id][msg.sender]*(endStakingTime[_id][msg.sender] - startStakingTime[_id][msg.sender])/3;
-      
-        uint256 currentTime = startStakingTime[_id][msg.sender].add(time);
+        uint256 currentTime = getCurrentTimeReward(msg.sender,_id);
        
-        require(numberPart[_id][msg.sender] < 3, "the number of times to receive the reward has expired");
+        require(numberPart[_id][msg.sender] > 0, "the number of times to receive the reward has expired");
        
         require(block.timestamp > currentTime, "not enough staking time");
       
-        numberPart[_id][msg.sender] = numberPart[_id][msg.sender].add(1);
+        numberPart[_id][msg.sender] = numberPart[_id][msg.sender].sub(1);
         
-        tokenReward.transferFrom(admin, msg.sender, rewards[_id][msg.sender]/3);
+        tokenReward.transferFrom(admin, msg.sender, rewards[_id][msg.sender]/totalReward[_id][msg.sender] );
 
-        totalDak[msg.sender] = totalDak[msg.sender].add(rewards[_id][msg.sender]/3);
+        totalDak[msg.sender] = totalDak[msg.sender].add(rewards[_id][msg.sender]/totalReward[_id][msg.sender]);
+
+        totalDakInContract = totalDakInContract.add(rewards[_id][msg.sender]/totalReward[_id][msg.sender]);
+    }
+
+    function getTotalDakReward() public view returns(uint256){
+        return totalDakInContract;
     }
 
     /**
      * @notice A method to allow a stakeholder to withdraw his rewards.
      */
     function withdrawReward(uint256 _id) public payable{
-        // require(endStakingTime[_id][msg.sender] > 0, "not staking yet");
-        // require(block.timestamp > endStakingTime[_id][msg.sender], "not enough staking time");
+        require(endStakingTime[_id][msg.sender] > 0, "not staking yet");
+        require(block.timestamp > endStakingTime[_id][msg.sender], "not enough staking time");
         uint amountToTransfer = getBalanceUserStake(msg.sender,_id);
 
         address payable withdrawTo = payable(msg.sender);
         withdrawTo.transfer(amountToTransfer);
 
         Stakings[_id].totalStakes = Stakings[_id].totalStakes.sub(amountToTransfer);
-        tokenReward.transferFrom(admin, msg.sender, rewards[_id][msg.sender]/3);
         
-        numberPart[_id][msg.sender] = 3;
+        tokenReward.transferFrom(admin, msg.sender, (rewards[_id][msg.sender]*totalReward[_id][msg.sender])/Stakings[_id].unlocks );
+
+        totalDak[msg.sender] = totalDak[msg.sender].add(rewards[_id][msg.sender]/Stakings[_id].unlocks);
+        totalDakInContract = totalDakInContract.add(totalDak[msg.sender]);
+        
+        isStake[_id][msg.sender] = false;
+        numberPart[_id][msg.sender] = 0;
         rewards[_id][msg.sender] = 0;
         stakes[_id][msg.sender] = 0;
         endStakingTime[_id][msg.sender] = 0;
