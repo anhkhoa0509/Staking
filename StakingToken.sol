@@ -94,7 +94,6 @@ contract Staking is Ownable {
      */
     function createStake(uint256 _stake,uint256 _id, uint256 _rStake,uint256 _rDak,uint256 _time) public payable{
         require( !isStake[_id][msg.sender], "The address is staking");
-
         require(_stake  > 0 &&  msg.value > 0 && _stake == msg.value, "Cannot staking value 0");
 
         isStake[_id][msg.sender] = true;
@@ -113,12 +112,15 @@ contract Staking is Ownable {
         
         rewards[_id][msg.sender] = sumReward;
 
-        Stakings[_id].totalStakes =  Stakings[_id].totalStakes.add(msg.value);
+        Stakings[_id].totalStakes =  Stakings[_id].totalStakes + msg.value;
 
         Stakings[_id].totalUser =  Stakings[_id].totalUser.add(1);
     }
 
 
+    function geTotaltUserInStaking(uint256 _id) public view returns(uint256){
+        return Stakings[_id].totalUser;
+    }
 
     function addStake(uint256 _stake,uint256 _id, uint256 _rStake,uint256 _rDak,uint256 _time) public payable{
         require(_stake  > 0 &&  msg.value > 0 && _stake == msg.value, "Cannot staking value 0");
@@ -135,7 +137,7 @@ contract Staking is Ownable {
         
         stakes[_id][msg.sender] = stakes[_id][msg.sender].add(msg.value);
 
-        Stakings[_id].totalStakes = Stakings[_id].totalStakes.add(msg.value);
+      Stakings[_id].totalStakes =  Stakings[_id].totalStakes + msg.value;
         
         uint256 sumReward = calculateReward(stakes[_id][msg.sender],_id,_rStake,_rDak,_time);
 
@@ -146,7 +148,7 @@ contract Staking is Ownable {
     }
 
     function calculateReward(uint256 _stake,uint256 _id, uint256 _rStake,uint256 _rDak,uint256 _time) public view returns(uint256){
-        return (_stake * _rStake * Stakings[_id].interestRate*_time).div(_rDak*100*Stakings[_id].time);
+        return (_stake * _rStake * Stakings[_id].interestRate*_time)/(_rDak*100*Stakings[_id].time);
     }
 
     function getUnblock(address _userAdress,uint256 _id) public view returns(uint256){
@@ -211,11 +213,11 @@ contract Staking is Ownable {
 
         tokenReward.transferFrom(admin, msg.sender,reward);
 
-        totalDak[msg.sender] = totalDak[msg.sender].add(reward);
+        totalDak[msg.sender] = totalDak[msg.sender] + reward;
 
-        totalDakInContract = totalDakInContract.add(reward);
+        totalDakInContract = totalDakInContract + reward;
 
-        unLocks[_id][msg.sender] = unLocks[_id][msg.sender].sub(1);
+        unLocks[_id][msg.sender] = unLocks[_id][msg.sender] - 1;
     }
 
     function getTotalDakReward() public view returns(uint256){
@@ -235,7 +237,7 @@ contract Staking is Ownable {
 
         address payable withdrawTo = payable(msg.sender);
         withdrawTo.transfer(amountToTransfer);
-        Stakings[_id].totalStakes = Stakings[_id].totalStakes.sub(amountToTransfer);
+        Stakings[_id].totalStakes = Stakings[_id].totalStakes - amountToTransfer;
 
         uint256 reward = tokenRewardWithdraw[_id][msg.sender];
 
@@ -247,8 +249,8 @@ contract Staking is Ownable {
         rewards[_id][msg.sender] = 0;
         stakes[_id][msg.sender] = 0;
         endStakingTime[_id][msg.sender] = 0;
-        unLocks[_id][msg.sender] = unLocks[_id][msg.sender].add(1);
-        Stakings[_id].totalUser =  Stakings[_id].totalUser.sub(1);
+        unLocks[_id][msg.sender] = unLocks[_id][msg.sender] - 1;
+        Stakings[_id].totalUser =  Stakings[_id].totalUser - 1;
 
     }
 
